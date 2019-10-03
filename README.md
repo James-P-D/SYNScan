@@ -14,11 +14,11 @@ Because we are using raw sockets, we need to manually create the Ethernet, Inter
 Ethernet
 
 ```
-	+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
-	| 00 | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 | 12 | 13 | 14 | 15 |
-	+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
-	|   Destination MAC Address   |     Source MAC Address      |  Type   |
-	+-----------------------------+-----------------------------+---------+
+    +----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
+    | 00 | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 | 12 | 13 | 14 | 15 |
+    +----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
+    |   Destination MAC Address   |     Source MAC Address      |  Type   |
+    +-----------------------------+-----------------------------+---------+
 ```
 
 The Ethernet section of the packet simply consists of 6 bytes for the destination MAC Address, 6 bytes for the source MAC Address, and a 16-bit word for specifying the type. The packet type is easy enough to set (0x0800 for TCP in our case), as is the source MAC Address, which can be read from `GetAdaptersAddresses()`, but the destination MAC Address is slightly more tricky.
@@ -30,19 +30,19 @@ More information on the Ethernet section of the packet can be found on [Wikipedi
 Internet Protocol
 
 ```
-	                                                                      +----+----+
-																		  | 14 | 15 |
-																		  +----+----+
-																		  |VIHL| DE |
-	+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
-	| 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 |
-	+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
-	| Length  |   ID    |  F&FO   |TTL |PRTL| HCHCKSM |     Source IP     | Dest... |
-	+----+----+---------+---------+----+----+---------+-------------------+---------+
-	| 32 | 33 |
-	+----+----+
-	| ...IP   |
-	+---------+
+                                                                          +----+----+
+                                                                          | 14 | 15 |
+                                                                          +----+----+
+                                                                          |VIHL| DE |
+    +----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
+    | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 | 27 | 28 | 29 | 30 | 31 |
+    +----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
+    | Length  |   ID    |  F&FO   |TTL |PRTL| HCHCKSM |     Source IP     | Dest... |
+    +----+----+---------+---------+----+----+---------+-------------------+---------+
+    | 32 | 33 |
+    +----+----+
+    | ...IP   |
+    +---------+
 ```
 
 Most fields in the IP section are easy enough to define, source IP, destination IP etc. The one exception is the `Checksum` field. For calculating this field we first need to set the  field to zero and then calculate the sum of the 10 words starting at offset 14. Once totalled, we repeatedly add any carried digits (those too large to fit in 16-bits) until the final value does fit in 16-bits. Finally, we return the bitwise not of the word.
@@ -52,25 +52,25 @@ More information on the Internet Protocol section of the packet can be found on 
 Transmition Control Protocol
 
 ```
-	          +----+----+----+----+----+----+----+----+----+----+----+----+----+----+
-	          | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 |
-	          +----+----+----+----+----+----+----+----+----+----+----+----+----+----+
-	          |	SrcPort | DstPort |  Sequence Number  |    Ack Number     |OFST|FLGS|
-	+----+----+----+----+----+----+----+----+----+----+-------------------+----+----+
-	| 48 | 49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 |
-	+----+----+----+----+----+----+----+----+----+----+
-	|  WSize  | ChkSum  | UrgtPtr | K  | L  | DegSize |
-	+---------+---------+---------+----+----+---------+
+              +----+----+----+----+----+----+----+----+----+----+----+----+----+----+
+              | 34 | 35 | 36 | 37 | 38 | 39 | 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47 |
+              +----+----+----+----+----+----+----+----+----+----+----+----+----+----+
+              | SrcPort | DstPort |  Sequence Number  |    Ack Number     |OFST|FLGS|
+    +----+----+----+----+----+----+----+----+----+----+-------------------+----+----+
+    | 48 | 49 | 50 | 51 | 52 | 53 | 54 | 55 | 56 | 57 |
+    +----+----+----+----+----+----+----+----+----+----+
+    |  WSize  | ChkSum  | UrgtPtr | K  | L  | DegSize |
+    +---------+---------+---------+----+----+---------+
 ```
 
 For the TCP section, again, most fields are pretty straight-forward and can be hard-coded or set statically. The first exception is the `Flags` field at offset 47. This byte must have the 7th bit set for it to be treated as a SYN packet. 
 
 ```
-	+----+----+----+----+----+----+----+----+----+----+----+----+
-	| 00 | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 |
-	+----+----+----+----+----+----+----+----+----+----+----+----+
-	|     Source IP     |      Dest IP      |0x00|PTCL| Length  |	
-	+-------------------+-------------------+----+----+---------+
+    +----+----+----+----+----+----+----+----+----+----+----+----+
+    | 00 | 01 | 02 | 03 | 04 | 05 | 06 | 07 | 08 | 09 | 10 | 11 |
+    +----+----+----+----+----+----+----+----+----+----+----+----+
+    |     Source IP     |      Dest IP      |0x00|PTCL| Length  |    
+    +-------------------+-------------------+----+----+---------+
 ```
 
 The source and destination IPs can be copied from the IP section of the packet at offsets 26 and 30 respectively. The 8th byte is reserved so can be left as zero, whilst the 9th byte simply copies the protocol field from offset 23 in the IP section (0x06 for TCP). Finally the last word is reserved for 
