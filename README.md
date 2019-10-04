@@ -9,7 +9,7 @@ When initiating a legitimate TCP/IP connection, the source machine will send to 
 
 When scanning a host for open ports, Hackers would traditionally only send the first part of the exchange (send SYN, receive SYN/ACK for open ports or SYN/RST for closed ports) and then not respond any further. Because the port was never fully opened, firewalls would not inform the admin that the host was being scanned. SYN packets are also commonly used as part of a Distributed Denial of Service (DDoS) attack, whereby millions of SYN-packets are sent spoofed source-IP fields to a single host, quickly exhausting the resources of the target machine.
 
-As always, this project was simply created so that I could pollish by C programming skills, and to experiment with the [NPCAP](https://nmap.org/npcap/) library. If you need a real port-scanner that supports SYN-scanning and a whole host of other neat stuff, download [NMAP](https://nmap.org/).
+As always, this project was simply created so that I could polish by C programming skills, and to experiment with the [NPCAP](https://nmap.org/npcap/) library. If you need a real port-scanner that supports SYN-scanning and a whole host of other neat stuff, download [NMAP](https://nmap.org/).
 
 ## Contents
 
@@ -91,7 +91,7 @@ More information on the TCP section of the packet can be found on [Wikipedia](ht
 
 ## Setup
 
-Getting the program running should be pretty straight-forward. Simply download the latest [Npcap SDK](https://nmap.org/npcap/) and unpack it. I chose to unpack it to `c:\npcap-sdk-1.03`, so if you choose a different location, or you download a newer version than 1.03, remember to update the `Configuration Properties &gt; C\C++ &gt; Additional Include Directories` and `Configuration Properties &gt; Linker &gt; Additional Library Directories` fields in Visual Studio.
+Getting the program running should be pretty straight-forward. Simply download the latest [Npcap SDK](https://nmap.org/npcap/) and unpack it. I chose to unpack it to `c:\npcap-sdk-1.03`, so if you choose a different location, or you download a newer version than 1.03, remember to update the `Configuration Properties > C\C++ > Additional Include Directories` and `Configuration Properties > Linker > Additional Library Directories` fields in Visual Studio.
 
 ![Screenshot](https://github.com/James-P-D/SYNScan/blob/master/properties1.png)
 
