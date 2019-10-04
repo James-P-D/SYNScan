@@ -1,17 +1,29 @@
 # SYNScan
 A command-line port scanner using raw SYN packets
 
+![Screenshot](https://github.com/James-P-D/SYNScan/blob/master/Screenshot.gif)
+
+## Introduction
+
 When initiating a legitimate TCP/IP connection, the source machine will send to the destination machine a very small packet of data which contains two important pieces of information. Firstly it will contain the destination port number we wish to connect to (80 for HTTP, 21 for FTP etc.). Secondly, in the header of the TCP section of the packet, the `Flags` byte will have the 7th bit set to signify SYN. If the destination machine has a service running on the port we requested, it will send a packet back with both the 7th (SYN) and 4th (ACKNOWLEDGE) bits set. The source machine will send another packet with the 4th (ACKNOWLEDGE) bit set, after which the destination machine will allocate resources to keep the communication channel open between the two machines so that data can be sent back and forth. If the port is closed, the 7th (SYN) and 6th (RESET) will be set, and the source machine will not send any further packets.
 
 When scanning a host for open ports, Hackers would traditionally only send the first part of the exchange (send SYN, receive SYN/ACK for open ports or SYN/RST for closed ports) and then not respond any further. Because the port was never fully opened, firewalls would not inform the admin that the host was being scanned. SYN packets are also commonly used as part of a Distributed Denial of Service (DDoS) attack, whereby millions of SYN-packets are sent spoofed source-IP fields to a single host, quickly exhausting the resources of the target machine.
 
-As always, this project was simply created so that I could pollish by C programming skills, and to experiment with the NPCAP library. If you need a real port-scanner that supports SYN-scanning and a whole host of other neat stuff, download [NMAP](https://nmap.org/).
+As always, this project was simply created so that I could pollish by C programming skills, and to experiment with the [NPCAP](https://nmap.org/npcap/) library. If you need a real port-scanner that supports SYN-scanning and a whole host of other neat stuff, download [NMAP](https://nmap.org/).
 
-Technical Information
+## Contents
+
+* [Technical Information](#Technical-Information)
+* [Ethernet](#Ethernet)
+* [Internet Protocol](#Internet-Protocol)
+* [Transmition Control Protocol](#Transmition-Control-Protocol)
+* [Setup](#Setup)
+
+## Technical Information
 
 Because we are using raw sockets, we need to manually create the Ethernet, Internet Protocol, and Transmition Control Protocol sections of the packet.
 
-Ethernet
+## Ethernet
 
 ```
     +----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+----+
@@ -27,7 +39,7 @@ To get the destination MAC Address we need to use `SendARP()` to send an ARP req
 
 More information on the Ethernet section of the packet can be found on [Wikipedia](https://en.wikipedia.org/wiki/Ethernet_frame#Ethernet_II)
 
-Internet Protocol
+## Internet Protocol
 
 ```
                                                                           +----+----+
@@ -49,7 +61,7 @@ Most fields in the IP section are easy enough to define, source IP, destination 
 
 More information on the Internet Protocol section of the packet can be found on [Wikipedia](https://en.wikipedia.org/wiki/IPv4#Header) which also has an article on the [IPv4 Checksum](https://en.wikipedia.org/wiki/IPv4_header_checksum)
 
-Transmition Control Protocol
+## Transmition Control Protocol
 
 ```
               +----+----+----+----+----+----+----+----+----+----+----+----+----+----+
@@ -76,3 +88,11 @@ For the TCP section, again, most fields are pretty straight-forward and can be h
 The source and destination IPs can be copied from the IP section of the packet at offsets 26 and 30 respectively. The 8th byte is reserved so can be left as zero, whilst the 9th byte simply copies the protocol field from offset 23 in the IP section (0x06 for TCP). Finally the last word is reserved for 
 
 More information on the TCP section of the packet can be found on [Wikipedia](https://en.wikipedia.org/wiki/Transmission_Control_Protocol#TCP_segment_structure). Also [this](https://www.securitynik.com/2015/08/calculating-udp-checksum-with-taste-of_3.html) article explains the TCP Checksum and Pseudo-Header structure.
+
+## Setup
+
+Getting the program running should be pretty straight-forward. Simply download the latest [Npcap SDK](https://nmap.org/npcap/) and unpack it. I chose to unpack it to `c:\npcap-sdk-1.03`, so if you choose a different location, or you download a newer version than 1.03, remember to update the `Configuration Properties &gt; C\C++ &gt; Additional Include Directories` and `Configuration Properties &gt; Linker &gt; Additional Library Directories` fields in Visual Studio.
+
+![Screenshot](https://github.com/James-P-D/SYNScan/blob/master/properties1.png)
+
+![Screenshot](https://github.com/James-P-D/SYNScan/blob/master/properties2.png)
