@@ -70,14 +70,15 @@ BOOL LoadNpcapDlls()
 // Function prototypes
 void usage();
 int parse_argv(int argc, char* argv[], char device[], char ipAddress[], u_short ports[], int* portCount);
-BOOL get_adaptor_details(char device[], u_char mac_address[], u_char ip_address[]);
-BOOL get_adaptor_full_name(char device[], char device_full_name[]);
+BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[]);
+BOOL get_source_adaptor_full_name(char device[], char device_full_name[]);
+//BOOL get_destination_adaptor_details();
 BOOL string_to_ipaddress(char* str, u_char ip_address[]);
 void copy_u_short_to_array(u_char* array, int index, u_short val);
 void copy_u_long_to_array(u_char* array, int index, u_long val);
 u_short calculate_ip_checksum(u_char packet[PACKET_SIZE]);
 u_short calculate_tcp_checksum(u_char packet[PACKET_SIZE]);
-BOOL set_ethernet_fields(u_char packet[PACKET_SIZE], u_char mac_address[MAC_ADAPTER_LENGTH]);
+void set_ethernet_fields(u_char packet[PACKET_SIZE], u_char mac_address[MAC_ADAPTER_LENGTH]);
 void set_internet_protocol_fields(u_char packet[PACKET_SIZE]);
 void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port);
 void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data);
@@ -114,12 +115,12 @@ int main(int argc, char **argv) {
 
 	u_char mac_address[MAC_ADAPTER_LENGTH];
 	u_char source_ip_address[IP_ADDRESS_LENGTH];
-	if (!get_adaptor_details(device, mac_address, source_ip_address)) {
+	if (!get_source_adaptor_details(device, mac_address, source_ip_address)) {
 		return 3;
 	}
 
 	char device_name[200];
-	if (!get_adaptor_full_name(device, device_name)) {
+	if (!get_source_adaptor_full_name(device, device_name)) {
 		return 4;
 	}
 	
@@ -236,7 +237,7 @@ BOOL parse_argv(int argc, char* argv[], char device[], char ipAddress[], u_short
 	return TRUE;
 }
 
-BOOL get_adaptor_details(char device[], u_char mac_address[], u_char ip_address[]) {
+BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[]) {
 	BOOL found_adaptor = FALSE;
 
 	//MOVE THIS TO get_device_Details since GetAdaptorInfo is deprecated!!!
@@ -272,7 +273,7 @@ BOOL get_adaptor_details(char device[], u_char mac_address[], u_char ip_address[
 	return TRUE;
 }
 
-BOOL get_adaptor_full_name(char device[], char device_full_name[]) {
+BOOL get_source_adaptor_full_name(char device[], char device_full_name[]) {
 	pcap_if_t *alldevs;
 	pcap_if_t *d;
 	int inum;
@@ -300,6 +301,21 @@ BOOL get_adaptor_full_name(char device[], char device_full_name[]) {
 	pcap_freealldevs(alldevs);
 	return FALSE;
 }
+
+/*
+BOOL get_destination_adaptor_details() {
+	int intAddress = (int)BitConverter.ToUInt32(dst.GetAddressBytes(), 0);
+	byte[] macAddr = new byte[6];
+	int macAddrLen = macAddr.Length;
+	int retValue = SendArp(intAddress, 0, macAddr, ref macAddrLen);
+	if (retValue != 0)
+	{
+		return FALSE;
+	}
+
+	return TRUE;
+}
+*/
 
 BOOL string_to_ipaddress(char* str, u_char ip_address[]) {
 	struct sockaddr_in sa;
@@ -387,7 +403,7 @@ u_short calculate_tcp_checksum(u_char packet[PACKET_SIZE]) {
 	return (~checksum);
 }
 
-BOOL set_ethernet_fields(u_char packet[PACKET_SIZE], u_char mac_address[MAC_ADAPTER_LENGTH]) {
+void set_ethernet_fields(u_char packet[PACKET_SIZE], u_char mac_address[MAC_ADAPTER_LENGTH]) {
 	/*
 	Set the Ethernet section of the packet (12 bytes)
 	( https://en.wikipedia.org/wiki/Ethernet_frame#Ethernet_II )
@@ -416,8 +432,6 @@ BOOL set_ethernet_fields(u_char packet[PACKET_SIZE], u_char mac_address[MAC_ADAP
 	copy_u_short_to_array(packet, 12, (u_short)ETHERNET_IPV4);
 
 	//free(adapterAddresses);
-
-	return TRUE;
 }
 
 void set_internet_protocol_fields(u_char packet[PACKET_SIZE]) {
