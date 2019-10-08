@@ -12,26 +12,6 @@
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "IPHLPAPI.lib")
 
-#ifdef WIN32
-#include <tchar.h>
-BOOL LoadNpcapDlls()
-{
-	_TCHAR npcap_dir[512];
-	UINT len;
-	len = GetSystemDirectory(npcap_dir, 480);
-	if (!len) {
-		fprintf(stderr, "Error in GetSystemDirectory: %x", GetLastError());
-		return FALSE;
-	}
-	_tcscat_s(npcap_dir, 512, _T("\\Npcap"));
-	if (SetDllDirectory(npcap_dir) == 0) {
-		fprintf(stderr, "Error in SetDllDirectory: %x", GetLastError());
-		return FALSE;
-	}
-	return TRUE;
-}
-#endif
-
 // Constants for Ethernet section of packet
 #define ETHERNET_IPV4          0x0800
 
@@ -67,6 +47,27 @@ BOOL LoadNpcapDlls()
 #define IP_ADDRESS_LENGTH      4
 #define PSEUDO_HEADER_SIZE     12
 
+//TODO Move this
+#ifdef WIN32
+#include <tchar.h>
+BOOL LoadNpcapDlls()
+{
+	_TCHAR npcap_dir[512];
+	UINT len;
+	len = GetSystemDirectory(npcap_dir, 480);
+	if (!len) {
+		fprintf(stderr, "Error in GetSystemDirectory: %x", GetLastError());
+		return FALSE;
+	}
+	_tcscat_s(npcap_dir, 512, _T("\\Npcap"));
+	if (SetDllDirectory(npcap_dir) == 0) {
+		fprintf(stderr, "Error in SetDllDirectory: %x", GetLastError());
+		return FALSE;
+	}
+	return TRUE;
+}
+#endif
+
 // Function prototypes
 void usage();
 int parse_argv(int argc, char* argv[], char device[], char ipAddress[], u_short ports[], int* portCount);
@@ -86,11 +87,11 @@ void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_cha
 #define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
 #define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
 
-int main(int argc, char **argv) {
-	pcap_t *fp;
+int main(int argc, char** argv) {
+	pcap_t* fp;
 	char errorBuffer[PCAP_ERRBUF_SIZE];
 	u_char packet[PACKET_SIZE];
-		
+
 #ifdef WIN32
 	/* Load Npcap and its functions. */
 	if (!LoadNpcapDlls())
@@ -113,11 +114,16 @@ int main(int argc, char **argv) {
 		return 2;
 	}
 
-	u_char mac_address[MAC_ADAPTER_LENGTH];
+	u_char source_mac_address[MAC_ADAPTER_LENGTH];
 	u_char source_ip_address[IP_ADDRESS_LENGTH];
-	if (!get_source_adaptor_details(device, mac_address, source_ip_address)) {
+	if (!get_source_adaptor_details(device, source_mac_address, source_ip_address)) {
 		return 3;
 	}
+
+	u_char dest_mac_address[MAC_ADAPTER_LENGTH];
+	//if(!get_destination_adaptor_details()){
+	//  return 4;
+    //}
 
 	char device_name[200];
 	if (!get_source_adaptor_full_name(device, device_name)) {
@@ -130,11 +136,13 @@ int main(int argc, char **argv) {
 		return 4;
 	}
 	
+	// Start receiving packets *before* we start sending them, otherwise we
+	// might miss responses
 	pcap_loop(fp, 0, packet_handler, NULL);
 
 	// Build the packets and send
 	for (int j = 0; j < portCount; j++) {
-		set_ethernet_fields(packet, mac_address);
+		set_ethernet_fields(packet, source_mac_address, dest_mac_address);
 		set_internet_protocol_fields(packet, source_ip_address, dest_ip_address);
 		set_tcp_fields(packet, ports[j]);
 				
