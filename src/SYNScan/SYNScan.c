@@ -562,6 +562,19 @@ void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port) {
 
 void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data)
 {
+	if (header->len > 1234) {
+		//IP
+		//  12-13 0x0800 (IP)
+		//  14    0x45 (IPv4)
+		//  23    0x06 (TCP)
+		//  26-29 Source IP (
+		//  30-33 Dest IP
+		//TCP
+		//  34-35 Source Port (80)
+		//  36-37 Dest Port
+		//  46-47 Flags
+	}
+
 	struct tm *ltime;
 	char timestr[16];
 	time_t local_tv_sec;
