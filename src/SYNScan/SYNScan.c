@@ -1,3 +1,7 @@
+// TODO
+// 1) Destination MAC Address
+// 2) IP Address formats
+// 3) Receiving Packets
 //https://stackoverflow.com/questions/3281278/what-should-the-destination-mac-address-be-set-to-when-sending-packet-outside-of
 //https://docs.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-sendarp?redirectedfrom=MSDN
 //https://docs.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-sendarp
