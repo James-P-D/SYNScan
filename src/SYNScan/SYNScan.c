@@ -1,8 +1,9 @@
 // TODO
-// 1) Destination MAC Address
-// 2) IP Address formats
-// 3) Receiving Packets
-
+// Destination MAC Address
+// IP Address formats
+// Receiving Packets (reenable pcap_loop())
+// Check printf/fprintfs
+// Check return values
 #include <winsock2.h>
 #include <windows.h>
 #include <stdlib.h>
@@ -105,18 +106,18 @@ int main(int argc, char** argv) {
 
     u_char dest_mac_address[MAC_ADAPTER_LENGTH];
     if (!get_destination_adaptor_details("192.168.0.23", "192.168.0.1")) {
-        return 5;
+        return 4;
     }
 
     char device_name[200];
     if (!get_source_adaptor_full_name(device, device_name)) {
-        return 4;
+        return 5;
     }
 
     // Open the network adapter    
     if ((fp = pcap_open_live(device_name, 65536, 1, 1000, errorBuffer)) == NULL) {
         fprintf(stderr, "\nUnable to open the adapter %s\n", device);
-        return 4;
+        return 6;
     }
 
     // Start receiving packets *before* we start sending them, otherwise we
@@ -135,7 +136,7 @@ int main(int argc, char** argv) {
 
         if (pcap_sendpacket(fp, packet, PACKET_SIZE) != 0) {
             fprintf(stderr, "\nError sending the packet: %s\n", pcap_geterr(fp));
-            return 3;
+            return 7;
         }
         else {
             fprintf(stdout, "Port %d\n", ports[j]);
@@ -254,7 +255,6 @@ BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_a
 
     DWORD size = 0;
     PIP_ADAPTER_ADDRESSES adapterAddresses, adapterAddress;
-    PIP_ADAPTER_UNICAST_ADDRESS unicastAddress;
     if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, NULL, &size) != ERROR_BUFFER_OVERFLOW) {
         printf("Unable to get network adaptors(GetAdaptersAddresses())");
         return FALSE;
