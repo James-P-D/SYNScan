@@ -23,7 +23,7 @@
 #define IP_VIHL                0x45
 #define IP_DSCP_ECN            0x00
 #define IP_LENGTH              0x002C
-#define IP_ID                  0x568E
+#define IP_ID                  0x568E // Check this, can it not be zero?
 #define IP_FLAGS_FOFFSET       0x0000
 #define IP_TIME_TO_LIVE        0x32
 #define IP_TCP                 0x06
@@ -40,7 +40,7 @@
 #define TCP_URGENT_PTR         0x0000
 #define TCP_MAX_SEG_SIZE       0x02
 #define TCP_LENGTH             0x04
-#define TCP_MSS_VALUE          0x05b4
+#define TCP_MSS_VALUE          0x05B4
 #define TCP_INITIAL_CHECKSUM   0x0000
 
 // Constants for internal use
