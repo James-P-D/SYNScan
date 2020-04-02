@@ -60,7 +60,7 @@
 // Function prototypes
 BOOL LoadNpcapDlls();
 void usage();
-int parse_argv(int argc, char* argv[], char device[], char ipAddress[], u_short ports[], int* portCount);
+int parse_argv(int argc, char* argv[], char* device, char ipAddress[], u_short ports[], int* portCount);
 BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[]);
 BOOL get_source_adaptor_full_name(char device[], char device_full_name[]);
 BOOL string_to_ipaddress(char* str, u_char ip_address[]);
@@ -103,7 +103,7 @@ int main(int argc, char** argv) {
     u_short ports[MAX_PORTS];
     int portCount = 0;
     u_char dest_ip_address_string[INET_ADDRSTRLEN];
-    if (!parse_argv(argc, argv, &device, &dest_ip_address_string, &ports, &portCount)) {
+    if (!parse_argv(argc, argv, device, dest_ip_address_string, ports, &portCount)) {
         return INVALID_ARGS_ERROR_CODE;
     }
     total_ports = portCount;    
@@ -201,7 +201,7 @@ void usage() {
     }
 }
 
-BOOL parse_argv(int argc, char* argv[], char device[], char ipAddress[], u_short ports[], int* portCount) {
+BOOL parse_argv(int argc, char* argv[], char* device, char ipAddress[], u_short ports[], int* portCount) {
     strcpy_s(device, DEVICE_STRING_SIZE, argv[1]);
     strcpy_s(ipAddress, INET_ADDRSTRLEN, argv[2]);
 
@@ -278,7 +278,6 @@ BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_a
         return FALSE;
     }
 
-    char buff[100];
     DWORD bufflen = 100;
 
     for (adapterAddress = adapterAddresses; adapterAddress != NULL; adapterAddress = adapterAddress->Next) {
@@ -315,9 +314,7 @@ BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_a
 BOOL get_source_adaptor_full_name(char device[], char device_full_name[]) {
     pcap_if_t* alldevs;
     pcap_if_t* d;
-    int inum;
     int i = 0;
-    pcap_t* adhandle;
     char errbuf[PCAP_ERRBUF_SIZE];
 
     /* Retrieve the device list */
