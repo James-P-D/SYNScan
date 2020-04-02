@@ -130,7 +130,7 @@ C:\>SYNScan.exe {904E3F79-DD8A-45D6-B493-A362D0265A27} 192.168.0.1 21 23 53 80
 This will scan the IP address `192.168.0.1` for open TCP ports for the [FTP](https://en.wikipedia.org/wiki/File_Transfer_Protocol), [Telnet](https://en.wikipedia.org/wiki/Telnet), [DNS](https://en.wikipedia.org/wiki/Domain_Name_System) and [HTTP](https://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol) services. The expected output will vary depending on the IP address you are scanning, but should generally look something like this:
 
 ```
-C:\>SYNScan.exe {904E3F79-DD8A-45D6-B493-A362D0265A27} 192.168.0.1 1-65535
+C:\>SYNScan.exe {904E3F79-DD8A-45D6-B493-A362D0265A27} 192.168.0.1 21 23 53 80
 
 Scanning for 4 TCP ports...
 21 - Closed
