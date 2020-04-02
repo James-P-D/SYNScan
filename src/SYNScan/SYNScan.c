@@ -1,9 +1,8 @@
 // TODO
-// Destination MAC Address
-// IP Address formats
 // Receiving Packets (reenable pcap_loop())
 // Check printf/fprintfs
-// Check return values
+// Check return values (Change to constants with #DEFINE?)
+
 #include <winsock2.h>
 #include <windows.h>
 #include <stdlib.h>
@@ -44,12 +43,13 @@
 #define TCP_INITIAL_CHECKSUM   0x0000
 
 // Constants for internal use
-#define DEVICE_STRING_SIZE     100
-#define MAX_PORTS              65536
-#define PACKET_SIZE            58
-#define MAC_ADAPTER_LENGTH     6
-#define IP_ADDRESS_LENGTH      4
-#define PSEUDO_HEADER_SIZE     12
+#define DEVICE_STRING_SIZE       100
+#define MAX_PORTS                65536
+#define PACKET_SIZE              58
+#define MAC_ADAPTER_LENGTH       6
+#define IP_ADDRESS_LENGTH        4
+#define IP_ADDRESS_STRING_LENGTH 16
+#define PSEUDO_HEADER_SIZE       12
 
 // Function prototypes
 BOOL LoadNpcapDlls();
@@ -67,14 +67,20 @@ void set_ethernet_fields(u_char packet[PACKET_SIZE], u_char source_mac_address[M
 void set_internet_protocol_fields(u_char packet[PACKET_SIZE]);
 void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port);
 void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data);
-BOOL get_destination_adaptor_details(char* srcIP, char* destIP);
+BOOL get_destination_adaptor_details(char* srcIP, char* destIP, u_char dest_mac_address[MAC_ADAPTER_LENGTH]);
 void display_in_hex(u_char buffer[], int startIndex, int length, char* message);
+void display_in_dec(u_char buffer[], int startIndex, int length, char* message);
 
 #define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
 #define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
 
+// Global Variables
+pcap_t* fp;
+u_char source_ip_address[IP_ADDRESS_LENGTH];
+u_char dest_ip_address[IP_ADDRESS_LENGTH];
+int total_ports = 0;
+
 int main(int argc, char** argv) {
-    pcap_t* fp;
     char errorBuffer[PCAP_ERRBUF_SIZE];
     u_char packet[PACKET_SIZE];
 
@@ -91,21 +97,29 @@ int main(int argc, char** argv) {
     }
 
     char device[DEVICE_STRING_SIZE];
-    char dest_ip_address[INET_ADDRSTRLEN];
     u_short ports[MAX_PORTS];
     int portCount = 0;
-    if (!parse_argv(argc, argv, &device, &dest_ip_address, &ports, &portCount)) {
+    u_char dest_ip_address_string[INET_ADDRSTRLEN];
+    if (!parse_argv(argc, argv, &device, &dest_ip_address_string, &ports, &portCount)) {
         return 2;
     }
+    total_ports = portCount;    
+    struct sockaddr_in sa;
+    inet_pton(AF_INET, dest_ip_address_string, &(sa.sin_addr));
+    dest_ip_address[0] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b1);
+    dest_ip_address[1] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b2);
+    dest_ip_address[2] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b3);
+    dest_ip_address[3] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b4);
 
     u_char source_mac_address[MAC_ADAPTER_LENGTH];
-    u_char source_ip_address[IP_ADDRESS_LENGTH];
     if (!get_source_adaptor_details(device, source_mac_address, source_ip_address)) {
         return 3;
     }
 
+    char source_ip_address_string[IP_ADDRESS_STRING_LENGTH];
+    sprintf_s(source_ip_address_string, IP_ADDRESS_STRING_LENGTH, "%d.%d.%d.%d", source_ip_address[0], source_ip_address[1], source_ip_address[2], source_ip_address[3]);
     u_char dest_mac_address[MAC_ADAPTER_LENGTH];
-    if (!get_destination_adaptor_details("192.168.0.23", "192.168.0.1")) {
+    if (!get_destination_adaptor_details(source_ip_address_string, dest_ip_address_string, dest_mac_address)) {
         return 4;
     }
 
@@ -119,32 +133,26 @@ int main(int argc, char** argv) {
         fprintf(stderr, "\nUnable to open the adapter %s\n", device);
         return 6;
     }
-
-    // Start receiving packets *before* we start sending them, otherwise we
-    // might miss responses
-    //pcap_loop(fp, 0, packet_handler, NULL);
-
+    
     // Build the packets and send
+    fprintf(stdout, "Scanning for %d TCP ports...\n", portCount);
     for (int j = 0; j < portCount; j++) {
         set_ethernet_fields(packet, source_mac_address, dest_mac_address);
-        set_internet_protocol_fields(packet, source_ip_address, dest_ip_address);
+        set_internet_protocol_fields(packet);
         set_tcp_fields(packet, ports[j]);
-
-        display_in_hex(packet, 0, 6, "Dest Mac");
-        display_in_hex(packet, 6, 6, "Source Mac");
-        display_in_hex(packet, 12, 2, "Protocol");
 
         if (pcap_sendpacket(fp, packet, PACKET_SIZE) != 0) {
             fprintf(stderr, "\nError sending the packet: %s\n", pcap_geterr(fp));
             return 7;
         }
-        else {
-            fprintf(stdout, "Port %d\n", ports[j]);
-        }
     }
+
+    // Start listening for packets
+    pcap_loop(fp, 0, packet_handler, NULL);
 
     pcap_close(fp);
 
+    fprintf(stdout, "\nComplete!\n");
     return 0;
 }
 
@@ -271,7 +279,6 @@ BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_a
     DWORD bufflen = 100;
 
     for (adapterAddress = adapterAddresses; adapterAddress != NULL; adapterAddress = adapterAddress->Next) {
-        //printf("%s\n", adapterAddress->AdapterName);
         if (!strcmp(adapterAddress->AdapterName, device))
         {
             found_adaptor = TRUE;
@@ -331,9 +338,9 @@ BOOL get_source_adaptor_full_name(char device[], char device_full_name[]) {
     return FALSE;
 }
 
-BOOL get_destination_adaptor_details(char* srcIP, char* destIP) {
+BOOL get_destination_adaptor_details(char* srcIP, char* destIP, u_char dest_mac_address[MAC_ADAPTER_LENGTH]) {
     ULONG PhysAddrLen = MAC_ADAPTER_LENGTH;
-    char macAddress[MAC_ADAPTER_LENGTH];
+    u_char temp_dest_mac_address[MAC_ADAPTER_LENGTH];
 
     IPAddr srcipstr = 0;
     IPAddr dstipstr = 0;
@@ -345,10 +352,12 @@ BOOL get_destination_adaptor_details(char* srcIP, char* destIP) {
         return FALSE;
     }
 
-    if (SendARP((IPAddr)dstipstr, (IPAddr)srcipstr, &macAddress, &PhysAddrLen)) {
+    if (SendARP((IPAddr)dstipstr, (IPAddr)srcipstr, &temp_dest_mac_address, &PhysAddrLen)) {
         fprintf(stderr, "Unable to get destination ethernet address\n");
         return FALSE;
     }
+
+    memcpy(dest_mac_address, temp_dest_mac_address, MAC_ADAPTER_LENGTH);
 
     return TRUE;
 }
@@ -507,16 +516,16 @@ void set_internet_protocol_fields(u_char packet[PACKET_SIZE]) {
     copy_u_short_to_array(packet, 24, IP_INITIAL_CHECKSUM);
 
     // Source IP
-    packet[26] = 1;
-    packet[27] = 2;
-    packet[28] = 3;
-    packet[29] = 4;
+    packet[26] = source_ip_address[0];
+    packet[27] = source_ip_address[1];
+    packet[28] = source_ip_address[2];
+    packet[29] = source_ip_address[3];
 
     // Destination IP
-    packet[30] = 5;
-    packet[31] = 6;
-    packet[32] = 7;
-    packet[33] = 8;
+    packet[30] = dest_ip_address[0];
+    packet[31] = dest_ip_address[1];
+    packet[32] = dest_ip_address[2];
+    packet[33] = dest_ip_address[3];
 
     // Header Checksum
     u_short ip_checksum = calculate_ip_checksum(packet);
@@ -582,36 +591,51 @@ void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port) {
 
 void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_char* pkt_data)
 {
-    if (header->len > 1234) {
+    if (header->len > 50) {
         //IP
-        //  12-13 0x0800 (IP)
-        //  14    0x45 (IPv4)
-        //  23    0x06 (TCP)
-        //  26-29 Source IP (
-        //  30-33 Dest IP
-        //TCP
-        //  34-35 Source Port (80)
-        //  36-37 Dest Port
-        //  46-47 Flags
+        if (
+            (pkt_data[12] == 0x08) && (pkt_data[13] == 0x00) && //  12-13 0x0800 (IP)
+            (pkt_data[14] == 0x45) &&                           //  14    0x45 (IPv4)
+            (pkt_data[23] == 0x06))                             //  23    0x06 (TCP)
+        {
+            u_char a1 = pkt_data[26];
+            u_char a2 = pkt_data[27];
+            u_char a3 = pkt_data[28];
+            u_char a4 = pkt_data[29];
+            u_char b1 = pkt_data[30];
+            u_char b2 = pkt_data[31];
+            u_char b3 = pkt_data[32];
+            u_char b4 = pkt_data[33];
+            if (
+                (pkt_data[26] == dest_ip_address[0]) &&
+                (pkt_data[27] == dest_ip_address[1]) &&
+                (pkt_data[28] == dest_ip_address[2]) &&
+                (pkt_data[29] == dest_ip_address[3]) &&
+                (pkt_data[30] == source_ip_address[0]) &&
+                (pkt_data[31] == source_ip_address[1]) &&
+                (pkt_data[32] == source_ip_address[2]) &&
+                (pkt_data[33] == source_ip_address[3]))
+            {
+                u_short port = ((u_short)pkt_data[34] << 8) + pkt_data[35];
+                u_short flags = ((u_short)pkt_data[46] << 8) + pkt_data[47];
+
+                if (((flags & TCP_FLAGS_ACK) == TCP_FLAGS_ACK) && ((flags & TCP_FLAGS_SYN) == TCP_FLAGS_SYN)) {
+                    fprintf(stdout, "%d - Open\n", port);
+                }
+                else if (((flags & TCP_FLAGS_ACK) == TCP_FLAGS_ACK) && ((flags & TCP_FLAGS_RST) == TCP_FLAGS_RST)) {
+                    fprintf(stdout, "%d - Closed\n", port);
+                }
+                else {
+                    fprintf(stdout, "%d - Unknown\n", port);
+                }
+
+                total_ports--;
+                if (total_ports == 0) {
+                    pcap_breakloop(fp);
+                }
+            }
+        }
     }
-
-    struct tm* ltime;
-    char timestr[16];
-    time_t local_tv_sec;
-
-    /*
-    * unused parameters
-    */
-    (VOID)(param);
-    (VOID)(pkt_data);
-
-    /* convert the timestamp to readable format */
-    local_tv_sec = header->ts.tv_sec;
-    //ltime = localtime(&local_tv_sec);
-    //strftime(timestr, sizeof timestr, "%H:%M:%S", ltime);
-
-    //printf("%s,%.6d len:%d\n", timestr, header->ts.tv_usec, header->len);
-    printf("%d bytes\n", header->len);
 }
 
 void display_in_hex(u_char buffer[], int startIndex, int length, char* message) {
@@ -620,5 +644,12 @@ void display_in_hex(u_char buffer[], int startIndex, int length, char* message) 
         printf("%02X ", buffer[k]);
     }
     printf("\n");
+}
 
+void display_in_dec(u_char buffer[], int startIndex, int length, char* message) {
+    printf("%s\n", message);
+    for (int k = startIndex; k < startIndex + length; k++) {
+        printf("%d ", buffer[k]);
+    }
+    printf("\n");
 }
