@@ -1,8 +1,3 @@
-// TODO
-// Receiving Packets (reenable pcap_loop())
-// Check printf/fprintfs
-// Check return values (Change to constants with #DEFINE?)
-
 #include <winsock2.h>
 #include <windows.h>
 #include <stdlib.h>
@@ -14,6 +9,17 @@
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "IPHLPAPI.lib")
+
+// Error codes
+#define SUCCESS_ERROR_CODE                  0
+#define CANNOT_LOAD_NPCAP_ERROR_CODE        1
+#define INSUFFICIENT_ARGS_ERROR_CODE        2
+#define INVALID_ARGS_ERROR_CODE             3
+#define SOURCE_ADAPTOR_ERROR_CODE           4
+#define DEST_ADAPTOR_ERROR_CODE             5
+#define SOURCE_ADAPTOR_FULL_NAME_ERROR_CODE 6
+#define OPEN_ADAPTOR_ERROR_CODE             7
+#define SEND_PACKET_ERROR_CODE              8
 
 // Constants for Ethernet section of packet
 #define ETHERNET_IPV4          0x0800
@@ -57,7 +63,6 @@ void usage();
 int parse_argv(int argc, char* argv[], char device[], char ipAddress[], u_short ports[], int* portCount);
 BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[]);
 BOOL get_source_adaptor_full_name(char device[], char device_full_name[]);
-//BOOL get_destination_adaptor_details();
 BOOL string_to_ipaddress(char* str, u_char ip_address[]);
 void copy_u_short_to_array(u_char* array, int index, u_short val);
 void copy_u_long_to_array(u_char* array, int index, u_long val);
@@ -68,8 +73,6 @@ void set_internet_protocol_fields(u_char packet[PACKET_SIZE]);
 void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port);
 void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data);
 BOOL get_destination_adaptor_details(char* srcIP, char* destIP, u_char dest_mac_address[MAC_ADAPTER_LENGTH]);
-void display_in_hex(u_char buffer[], int startIndex, int length, char* message);
-void display_in_dec(u_char buffer[], int startIndex, int length, char* message);
 
 #define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
 #define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
@@ -88,12 +91,12 @@ int main(int argc, char** argv) {
     if (!LoadNpcapDlls())
     {
         fprintf(stderr, "Couldn't load Npcap\n");
-        exit(1);
+        return CANNOT_LOAD_NPCAP_ERROR_CODE;
     }
 
     if (argc < 3) {
         usage();
-        return 1;
+        return INSUFFICIENT_ARGS_ERROR_CODE;
     }
 
     char device[DEVICE_STRING_SIZE];
@@ -101,7 +104,7 @@ int main(int argc, char** argv) {
     int portCount = 0;
     u_char dest_ip_address_string[INET_ADDRSTRLEN];
     if (!parse_argv(argc, argv, &device, &dest_ip_address_string, &ports, &portCount)) {
-        return 2;
+        return INVALID_ARGS_ERROR_CODE;
     }
     total_ports = portCount;    
     struct sockaddr_in sa;
@@ -113,25 +116,25 @@ int main(int argc, char** argv) {
 
     u_char source_mac_address[MAC_ADAPTER_LENGTH];
     if (!get_source_adaptor_details(device, source_mac_address, source_ip_address)) {
-        return 3;
+        return SOURCE_ADAPTOR_ERROR_CODE;
     }
 
     char source_ip_address_string[IP_ADDRESS_STRING_LENGTH];
     sprintf_s(source_ip_address_string, IP_ADDRESS_STRING_LENGTH, "%d.%d.%d.%d", source_ip_address[0], source_ip_address[1], source_ip_address[2], source_ip_address[3]);
     u_char dest_mac_address[MAC_ADAPTER_LENGTH];
     if (!get_destination_adaptor_details(source_ip_address_string, dest_ip_address_string, dest_mac_address)) {
-        return 4;
+        return DEST_ADAPTOR_ERROR_CODE;
     }
 
     char device_name[200];
     if (!get_source_adaptor_full_name(device, device_name)) {
-        return 5;
+        return SOURCE_ADAPTOR_FULL_NAME_ERROR_CODE;
     }
 
     // Open the network adapter    
     if ((fp = pcap_open_live(device_name, 65536, 1, 1000, errorBuffer)) == NULL) {
         fprintf(stderr, "\nUnable to open the adapter %s\n", device);
-        return 6;
+        return OPEN_ADAPTOR_ERROR_CODE;
     }
     
     // Build the packets and send
@@ -143,7 +146,7 @@ int main(int argc, char** argv) {
 
         if (pcap_sendpacket(fp, packet, PACKET_SIZE) != 0) {
             fprintf(stderr, "\nError sending the packet: %s\n", pcap_geterr(fp));
-            return 7;
+            return SEND_PACKET_ERROR_CODE;
         }
     }
 
@@ -153,7 +156,7 @@ int main(int argc, char** argv) {
     pcap_close(fp);
 
     fprintf(stdout, "\nComplete!\n");
-    return 0;
+    return SUCCESS_ERROR_CODE;
 }
 
 BOOL LoadNpcapDlls()
@@ -264,13 +267,13 @@ BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_a
     DWORD size = 0;
     PIP_ADAPTER_ADDRESSES adapterAddresses, adapterAddress;
     if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, NULL, &size) != ERROR_BUFFER_OVERFLOW) {
-        printf("Unable to get network adaptors(GetAdaptersAddresses())");
+        fprintf(stderr, "Unable to get network adaptors(GetAdaptersAddresses())");
         return FALSE;
     }
     adapterAddresses = (PIP_ADAPTER_ADDRESSES)malloc(size);
 
     if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, adapterAddresses, &size) != ERROR_SUCCESS) {
-        printf("Unable to get network adaptors(GetAdaptersAddresses())");
+        fprintf(stderr, "Unable to get network adaptors(GetAdaptersAddresses())");
         free(adapterAddresses);
         return FALSE;
     }
@@ -636,20 +639,4 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
             }
         }
     }
-}
-
-void display_in_hex(u_char buffer[], int startIndex, int length, char* message) {
-    printf("%s\n", message);
-    for (int k = startIndex; k < startIndex + length; k++) {
-        printf("%02X ", buffer[k]);
-    }
-    printf("\n");
-}
-
-void display_in_dec(u_char buffer[], int startIndex, int length, char* message) {
-    printf("%s\n", message);
-    for (int k = startIndex; k < startIndex + length; k++) {
-        printf("%d ", buffer[k]);
-    }
-    printf("\n");
 }
