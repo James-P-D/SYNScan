@@ -1,3 +1,5 @@
+//TODO: Fix receiving of packets. Need to keep array of tuples (port/bool) to check whether response received or not.
+
 #include <winsock2.h>
 #include <windows.h>
 #include <stdlib.h>
