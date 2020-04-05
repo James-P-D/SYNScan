@@ -99,14 +99,19 @@ int main(int argc, char** argv) {
         return INSUFFICIENT_ARGS_ERROR_CODE;
     }
 
+    // Parse the arguments from the command-line. Should receive the device-name, destination IP,
+    // list of ports to scan, and number of ports to scan
     char device[DEVICE_STRING_SIZE];
     u_short ports[MAX_PORTS];
-    int portCount = 0;
+    int port_count = 0;
     u_char dest_ip_address_string[INET_ADDRSTRLEN];
-    if (!parse_argv(argc, argv, device, dest_ip_address_string, ports, &portCount)) {
+    if (!parse_argv(argc, argv, device, dest_ip_address_string, ports, &port_count)) {
         return INVALID_ARGS_ERROR_CODE;
     }
-    total_ports = portCount;    
+    // Make duplicate of port_count so we can decrement it later when we start receiving
+    // response packets
+    total_ports = port_count;    
+    // Get the destination IP address in bytes (u_chars)
     struct sockaddr_in sa;
     inet_pton(AF_INET, dest_ip_address_string, &(sa.sin_addr));
     dest_ip_address[0] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b1);
@@ -114,18 +119,23 @@ int main(int argc, char** argv) {
     dest_ip_address[2] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b3);
     dest_ip_address[3] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b4);
 
+    // Get the source MAC address 
     u_char source_mac_address[MAC_ADAPTER_LENGTH];
     if (!get_source_adaptor_details(device, source_mac_address, source_ip_address)) {
         return SOURCE_ADAPTOR_ERROR_CODE;
     }
 
+    // Save the source IP address
     char source_ip_address_string[IP_ADDRESS_STRING_LENGTH];
     sprintf_s(source_ip_address_string, IP_ADDRESS_STRING_LENGTH, "%d.%d.%d.%d", source_ip_address[0], source_ip_address[1], source_ip_address[2], source_ip_address[3]);
+    
+    // Get the destination MAC address
     u_char dest_mac_address[MAC_ADAPTER_LENGTH];
     if (!get_destination_adaptor_details(source_ip_address_string, dest_ip_address_string, dest_mac_address)) {
         return DEST_ADAPTOR_ERROR_CODE;
     }
 
+    // Get the networking device full-name
     char device_name[200];
     if (!get_source_adaptor_full_name(device, device_name)) {
         return SOURCE_ADAPTOR_FULL_NAME_ERROR_CODE;
@@ -138,8 +148,8 @@ int main(int argc, char** argv) {
     }
     
     // Build the packets and send
-    fprintf(stdout, "Scanning for %d TCP ports...\n", portCount);
-    for (int j = 0; j < portCount; j++) {
+    fprintf(stdout, "Scanning for %d TCP ports...\n", port_count);
+    for (int j = 0; j < port_count; j++) {
         set_ethernet_fields(packet, source_mac_address, dest_mac_address);
         set_internet_protocol_fields(packet);
         set_tcp_fields(packet, ports[j]);
@@ -153,12 +163,14 @@ int main(int argc, char** argv) {
     // Start listening for packets
     pcap_loop(fp, 0, packet_handler, NULL);
 
+    // Close
     pcap_close(fp);
 
     fprintf(stdout, "\nComplete!\n");
     return SUCCESS_ERROR_CODE;
 }
 
+// Load npcap DLLs
 BOOL LoadNpcapDlls()
 {
     _TCHAR npcap_dir[512];
@@ -176,8 +188,9 @@ BOOL LoadNpcapDlls()
     return TRUE;
 }
 
+// Display program usage
 void usage() {
-    pcap_if_t* allDevices, * device;
+    pcap_if_t* all_devices, * device;
     char errorBuffer[PCAP_ERRBUF_SIZE];
 
     fprintf(stdout, "Usage: SYNSCAN.EXE Adaptor-GUID IP-Address Port1 Port2 .. PortN\n");
@@ -187,11 +200,11 @@ void usage() {
     fprintf(stdout, "\n");
     fprintf(stdout, "Finding available adaptors....\n");
 
-    if (pcap_findalldevs(&allDevices, errorBuffer) == -1) {
+    if (pcap_findalldevs(&all_devices, errorBuffer) == -1) {
         fprintf(stdout, "Error getting devices (pcap_findalldevs()): %s\n", errorBuffer);
         exit(1);
     }
-    for (device = allDevices; device; device = device->next) {
+    for (device = all_devices; device; device = device->next) {
         if (device->description) {
             fprintf(stdout, "%s\t(%s)\n", device->name, device->description);
         }
@@ -201,11 +214,11 @@ void usage() {
     }
 }
 
-BOOL parse_argv(int argc, char* argv[], char* device, char ipAddress[], u_short ports[], int* portCount) {
+BOOL parse_argv(int argc, char* argv[], char* device, char ip_address[], u_short ports[], int* port_count) {
     strcpy_s(device, DEVICE_STRING_SIZE, argv[1]);
-    strcpy_s(ipAddress, INET_ADDRSTRLEN, argv[2]);
+    strcpy_s(ip_address, INET_ADDRSTRLEN, argv[2]);
 
-    *portCount = 0;
+    *port_count = 0;
     for (int i = 3; i < argc; i++) {
         //char* c = argv[i];
         char* e = strchr(argv[i], '-');
@@ -215,9 +228,9 @@ BOOL parse_argv(int argc, char* argv[], char* device, char ipAddress[], u_short 
                 fprintf(stderr, "%s is not a valid port number\n", argv[i]);
                 return FALSE;
             }
-            ports[*portCount] = (u_short)port;
-            (*portCount)++;
-            if (*portCount > MAX_PORTS) {
+            ports[*port_count] = (u_short)port;
+            (*port_count)++;
+            if (*port_count > MAX_PORTS) {
                 fprintf(stderr, "Too many ports\n");
                 return FALSE;
             }
@@ -226,26 +239,26 @@ BOOL parse_argv(int argc, char* argv[], char* device, char ipAddress[], u_short 
             char* token2 = NULL;
             char* token1 = strtok_s(argv[i], "-", &token2);
             if (token1 != NULL && token2 != NULL) {
-                int lowPort = atoi(token1);
-                int highPort = atoi(token2);
+                int low_port = atoi(token1);
+                int high_port = atoi(token2);
 
-                if ((lowPort < 1) || (lowPort > 65535)) {
-                    fprintf(stderr, "%d is not a valid port number\n", lowPort);
+                if ((low_port < 1) || (low_port > 65535)) {
+                    fprintf(stderr, "%d is not a valid port number\n", low_port);
                     return FALSE;
                 }
-                if ((highPort < 1) || (highPort > 65535)) {
-                    fprintf(stderr, "%d is not a valid port number\n", highPort);
+                if ((high_port < 1) || (high_port > 65535)) {
+                    fprintf(stderr, "%d is not a valid port number\n", high_port);
                     return FALSE;
                 }
-                if (lowPort >= highPort) {
+                if (low_port >= high_port) {
                     fprintf(stderr, "%s is not a valid port range\n", argv[i]);
                     return FALSE;
                 }
 
-                for (int j = lowPort; j <= highPort; j++) {
-                    ports[*portCount] = (u_short)j;
-                    (*portCount)++;
-                    if (*portCount > MAX_PORTS) {
+                for (int j = low_port; j <= high_port; j++) {
+                    ports[*port_count] = (u_short)j;
+                    (*port_count)++;
+                    if (*port_count > MAX_PORTS) {
                         fprintf(stderr, "Too many ports\n");
                         return FALSE;
                     }
@@ -265,28 +278,28 @@ BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_a
     BOOL found_adaptor = FALSE;
 
     DWORD size = 0;
-    PIP_ADAPTER_ADDRESSES adapterAddresses, adapterAddress;
+    PIP_ADAPTER_ADDRESSES adapter_addresses, adapter_address;
     if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, NULL, &size) != ERROR_BUFFER_OVERFLOW) {
         fprintf(stderr, "Unable to get network adaptors(GetAdaptersAddresses())");
         return FALSE;
     }
-    adapterAddresses = (PIP_ADAPTER_ADDRESSES)malloc(size);
+    adapter_addresses = (PIP_ADAPTER_ADDRESSES)malloc(size);
 
-    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, adapterAddresses, &size) != ERROR_SUCCESS) {
+    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, adapter_addresses, &size) != ERROR_SUCCESS) {
         fprintf(stderr, "Unable to get network adaptors(GetAdaptersAddresses())");
-        free(adapterAddresses);
+        free(adapter_addresses);
         return FALSE;
     }
 
-    DWORD bufflen = 100;
+    DWORD buffer_length = 100;
 
-    for (adapterAddress = adapterAddresses; adapterAddress != NULL; adapterAddress = adapterAddress->Next) {
-        if (!strcmp(adapterAddress->AdapterName, device))
+    for (adapter_address = adapter_addresses; adapter_address != NULL; adapter_address = adapter_address->Next) {
+        if (!strcmp(adapter_address->AdapterName, device))
         {
             found_adaptor = TRUE;
-            memcpy(mac_address, adapterAddress->PhysicalAddress, adapterAddress->PhysicalAddressLength);
+            memcpy(mac_address, adapter_address->PhysicalAddress, adapter_address->PhysicalAddressLength);
 
-            PIP_ADAPTER_UNICAST_ADDRESS pUnicast = adapterAddress->FirstUnicastAddress;
+            PIP_ADAPTER_UNICAST_ADDRESS pUnicast = adapter_address->FirstUnicastAddress;
             if (pUnicast != NULL) {
                 for (int i = 0; pUnicast != NULL; i++)
                 {
@@ -311,48 +324,50 @@ BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_a
     return TRUE;
 }
 
+// Get the full-name for the source network adaptor
 BOOL get_source_adaptor_full_name(char device[], char device_full_name[]) {
-    pcap_if_t* alldevs;
-    pcap_if_t* d;
+    pcap_if_t* all_devices;
+    pcap_if_t* device_found;
     int i = 0;
-    char errbuf[PCAP_ERRBUF_SIZE];
+    char error_buffer[PCAP_ERRBUF_SIZE];
 
     /* Retrieve the device list */
-    if (pcap_findalldevs(&alldevs, errbuf) == -1)
+    if (pcap_findalldevs(&all_devices, error_buffer) == -1)
     {
-        fprintf(stderr, "Error in pcap_findalldevs: %s\n", errbuf);
+        fprintf(stderr, "Error in pcap_findalldevs: %s\n", error_buffer);
         return FALSE;
     }
 
     /* Print the list */
-    for (d = alldevs; d; d = d->next)
+    for (device_found = all_devices; device_found; device_found = device_found->next)
     {
-        if (strstr(d->name, device) != NULL) {
-            strcpy_s(device_full_name, 200, d->name);
-            pcap_freealldevs(alldevs);
+        if (strstr(device_found->name, device) != NULL) {
+            strcpy_s(device_full_name, 200, device_found->name);
+            pcap_freealldevs(all_devices);
             return TRUE;
         }
     }
 
-    pcap_freealldevs(alldevs);
+    pcap_freealldevs(all_devices);
     return FALSE;
 }
 
-BOOL get_destination_adaptor_details(char* srcIP, char* destIP, u_char dest_mac_address[MAC_ADAPTER_LENGTH]) {
-    ULONG PhysAddrLen = MAC_ADAPTER_LENGTH;
+// Get the destination networking adaptor details
+BOOL get_destination_adaptor_details(char* source_ip, char* dest_ip, u_char dest_mac_address[MAC_ADAPTER_LENGTH]) {
+    ULONG physical_address_length = MAC_ADAPTER_LENGTH;
     u_char temp_dest_mac_address[MAC_ADAPTER_LENGTH];
 
-    IPAddr srcipstr = 0;
-    IPAddr dstipstr = 0;
+    IPAddr source_ip_string = 0;
+    IPAddr dest_ip_string = 0;
 
-    if (inet_pton(AF_INET, destIP, &dstipstr) != 1) {
+    if (inet_pton(AF_INET, dest_ip, &dest_ip_string) != 1) {
         return FALSE;
     }
-    if (inet_pton(AF_INET, srcIP, &srcipstr) != 1) {
+    if (inet_pton(AF_INET, source_ip, &source_ip_string) != 1) {
         return FALSE;
     }
 
-    if (SendARP((IPAddr)dstipstr, (IPAddr)srcipstr, &temp_dest_mac_address, &PhysAddrLen)) {
+    if (SendARP((IPAddr)dest_ip_string, (IPAddr)source_ip_string, &temp_dest_mac_address, &physical_address_length)) {
         fprintf(stderr, "Unable to get destination ethernet address\n");
         return FALSE;
     }
@@ -362,23 +377,25 @@ BOOL get_destination_adaptor_details(char* srcIP, char* destIP, u_char dest_mac_
     return TRUE;
 }
 
-
+// Convert string IP into byte array
 BOOL string_to_ipaddress(char* str, u_char ip_address[]) {
     struct sockaddr_in sa;
 
     return inet_pton(AF_INET, str, &(sa.sin_addr));
 }
 
+// Copy byte to array
 void copy_u_short_to_array(u_char* array, int index, u_short val) {
     u_short val2 = htons(val);
     memcpy((array + index), (unsigned char*)&val2, sizeof(u_short));
 }
-
+// Copy long to array
 void copy_u_long_to_array(u_char* array, int index, u_long val) {
     u_long val2 = htonl(val);
     memcpy((array + index), (unsigned char*)&val2, sizeof(u_long));
 }
 
+// Calcualate the IP section checksum
 u_short calculate_ip_checksum(u_char packet[PACKET_SIZE]) {
     /*
     * Calculate the IP Checksum value
@@ -409,6 +426,7 @@ u_short calculate_ip_checksum(u_char packet[PACKET_SIZE]) {
     return (~checksum);
 }
 
+// Calculate the TCP section checksum
 u_short calculate_tcp_checksum(u_char packet[PACKET_SIZE]) {
     u_char pseudo_header[PSEUDO_HEADER_SIZE];
     memcpy(pseudo_header + 0, packet + 26, 4);
@@ -449,6 +467,7 @@ u_short calculate_tcp_checksum(u_char packet[PACKET_SIZE]) {
     return (~checksum);
 }
 
+// Set the Ethernet section fields
 void set_ethernet_fields(u_char packet[PACKET_SIZE], u_char source_mac_address[MAC_ADAPTER_LENGTH], u_char dest_mac_address[MAC_ADAPTER_LENGTH]) {
     /*
     Set the Ethernet section of the packet (12 bytes)
@@ -471,6 +490,7 @@ void set_ethernet_fields(u_char packet[PACKET_SIZE], u_char source_mac_address[M
     copy_u_short_to_array(packet, 12, (u_short)ETHERNET_IPV4);
 }
 
+// Set the IP section fields
 void set_internet_protocol_fields(u_char packet[PACKET_SIZE]) {
     /*
     Set the Internet Protocol section of the packet
@@ -532,6 +552,7 @@ void set_internet_protocol_fields(u_char packet[PACKET_SIZE]) {
     copy_u_short_to_array(packet, 24, ip_checksum);
 }
 
+// Set the TCP section fields
 void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port) {
     /*
     Set the TCP section of the packet
@@ -589,23 +610,15 @@ void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port) {
     copy_u_short_to_array(packet, 50, tcp_checksum);
 }
 
+// Handle packets received
 void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_char* pkt_data)
 {
     if (header->len > 50) {
-        //IP
         if (
             (pkt_data[12] == 0x08) && (pkt_data[13] == 0x00) && //  12-13 0x0800 (IP)
             (pkt_data[14] == 0x45) &&                           //  14    0x45 (IPv4)
             (pkt_data[23] == 0x06))                             //  23    0x06 (TCP)
         {
-            u_char a1 = pkt_data[26];
-            u_char a2 = pkt_data[27];
-            u_char a3 = pkt_data[28];
-            u_char a4 = pkt_data[29];
-            u_char b1 = pkt_data[30];
-            u_char b2 = pkt_data[31];
-            u_char b3 = pkt_data[32];
-            u_char b4 = pkt_data[33];
             if (
                 (pkt_data[26] == dest_ip_address[0]) &&
                 (pkt_data[27] == dest_ip_address[1]) &&
@@ -623,7 +636,7 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
                     fprintf(stdout, "%d - Open\n", port);
                 }
                 else if (((flags & TCP_FLAGS_ACK) == TCP_FLAGS_ACK) && ((flags & TCP_FLAGS_RST) == TCP_FLAGS_RST)) {
-                    fprintf(stdout, "%d - Closed\n", port);
+                    //fprintf(stdout, "%d - Closed\n", port);
                 }
                 else {
                     fprintf(stdout, "%d - Unknown\n", port);
