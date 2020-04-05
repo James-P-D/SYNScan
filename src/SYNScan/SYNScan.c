@@ -10,6 +10,11 @@
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "IPHLPAPI.lib")
 
+union timeunion {
+    FILETIME fileTime;
+    ULARGE_INTEGER ul;
+};
+
 // Error codes
 #define SUCCESS_ERROR_CODE                  0
 #define CANNOT_LOAD_NPCAP_ERROR_CODE        1
@@ -61,7 +66,7 @@
 BOOL LoadNpcapDlls();
 void usage();
 int parse_argv(int argc, char* argv[], char* device, char ipAddress[], u_short ports[], int* portCount);
-BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[]);
+BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[], u_char default_gateway[]);
 BOOL get_source_adaptor_full_name(char device[], char device_full_name[]);
 BOOL string_to_ipaddress(char* str, u_char ip_address[]);
 void copy_u_short_to_array(u_char* array, int index, u_short val);
@@ -73,6 +78,7 @@ void set_internet_protocol_fields(u_char packet[PACKET_SIZE]);
 void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port);
 void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data);
 BOOL get_destination_adaptor_details(char* srcIP, char* destIP, u_char dest_mac_address[MAC_ADAPTER_LENGTH]);
+u_int64 calc_time_difference(SYSTEMTIME st1, SYSTEMTIME st2);
 
 #define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
 #define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
@@ -82,6 +88,9 @@ pcap_t* fp;
 u_char source_ip_address[IP_ADDRESS_LENGTH];
 u_char dest_ip_address[IP_ADDRESS_LENGTH];
 int total_ports = 0;
+SYSTEMTIME start_time;
+
+u_short packet_id = 1234;
 
 int main(int argc, char** argv) {
     char errorBuffer[PCAP_ERRBUF_SIZE];
@@ -119,19 +128,22 @@ int main(int argc, char** argv) {
     dest_ip_address[2] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b3);
     dest_ip_address[3] = (u_char)(sa.sin_addr.S_un.S_un_b.s_b4);
 
+    u_char default_gateway[IP_ADDRESS_LENGTH];
     // Get the source MAC address 
     u_char source_mac_address[MAC_ADAPTER_LENGTH];
-    if (!get_source_adaptor_details(device, source_mac_address, source_ip_address)) {
+    if (!get_source_adaptor_details(device, source_mac_address, source_ip_address, default_gateway)) {
         return SOURCE_ADAPTOR_ERROR_CODE;
     }
 
     // Save the source IP address
     char source_ip_address_string[IP_ADDRESS_STRING_LENGTH];
     sprintf_s(source_ip_address_string, IP_ADDRESS_STRING_LENGTH, "%d.%d.%d.%d", source_ip_address[0], source_ip_address[1], source_ip_address[2], source_ip_address[3]);
-    
+    char default_gateway_ip_address_string[IP_ADDRESS_STRING_LENGTH];
+    sprintf_s(default_gateway_ip_address_string, IP_ADDRESS_STRING_LENGTH, "%d.%d.%d.%d", default_gateway[0], default_gateway[1], default_gateway[2], default_gateway[3]);
+
     // Get the destination MAC address
     u_char dest_mac_address[MAC_ADAPTER_LENGTH];
-    if (!get_destination_adaptor_details(source_ip_address_string, dest_ip_address_string, dest_mac_address)) {
+    if (!get_destination_adaptor_details(source_ip_address_string, default_gateway_ip_address_string, dest_mac_address)) {
         return DEST_ADAPTOR_ERROR_CODE;
     }
 
@@ -155,11 +167,13 @@ int main(int argc, char** argv) {
         set_tcp_fields(packet, ports[j]);
 
         if (pcap_sendpacket(fp, packet, PACKET_SIZE) != 0) {
-            fprintf(stderr, "\nError sending the packet: %s\n", pcap_geterr(fp));
+            fprintf(stderr, "Error sending the packet: %s\n", pcap_geterr(fp));
             return SEND_PACKET_ERROR_CODE;
         }
     }
 
+    GetSystemTime(&start_time);
+    
     // Start listening for packets
     pcap_loop(fp, 0, packet_handler, NULL);
 
@@ -274,18 +288,18 @@ BOOL parse_argv(int argc, char* argv[], char* device, char ip_address[], u_short
     return TRUE;
 }
 
-BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[]) {
+BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[], u_char default_gateway[]) {
     BOOL found_adaptor = FALSE;
 
     DWORD size = 0;
     PIP_ADAPTER_ADDRESSES adapter_addresses, adapter_address;
-    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, NULL, &size) != ERROR_BUFFER_OVERFLOW) {
+    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX | GAA_FLAG_INCLUDE_GATEWAYS, NULL, NULL, &size) != ERROR_BUFFER_OVERFLOW) {
         fprintf(stderr, "Unable to get network adaptors(GetAdaptersAddresses())");
         return FALSE;
     }
     adapter_addresses = (PIP_ADAPTER_ADDRESSES)malloc(size);
 
-    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, NULL, adapter_addresses, &size) != ERROR_SUCCESS) {
+    if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX | GAA_FLAG_INCLUDE_GATEWAYS, NULL, adapter_addresses, &size) != ERROR_SUCCESS) {
         fprintf(stderr, "Unable to get network adaptors(GetAdaptersAddresses())");
         free(adapter_addresses);
         return FALSE;
@@ -299,19 +313,26 @@ BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_a
             found_adaptor = TRUE;
             memcpy(mac_address, adapter_address->PhysicalAddress, adapter_address->PhysicalAddressLength);
 
-            PIP_ADAPTER_UNICAST_ADDRESS pUnicast = adapter_address->FirstUnicastAddress;
-            if (pUnicast != NULL) {
-                for (int i = 0; pUnicast != NULL; i++)
+            PIP_ADAPTER_GATEWAY_ADDRESS_LH gateway_address = adapter_address->FirstGatewayAddress;
+            SOCKADDR_IN* gateway_address_sockaddr = (SOCKADDR_IN*)gateway_address->Address.lpSockaddr;
+            default_gateway[0] = (u_char)(gateway_address_sockaddr->sin_addr.S_un.S_un_b.s_b1);
+            default_gateway[1] = (u_char)(gateway_address_sockaddr->sin_addr.S_un.S_un_b.s_b2);
+            default_gateway[2] = (u_char)(gateway_address_sockaddr->sin_addr.S_un.S_un_b.s_b3);
+            default_gateway[3] = (u_char)(gateway_address_sockaddr->sin_addr.S_un.S_un_b.s_b4);
+
+            PIP_ADAPTER_UNICAST_ADDRESS unicast_address = adapter_address->FirstUnicastAddress;
+            if (unicast_address != NULL) {
+                for (int i = 0; unicast_address != NULL; i++)
                 {
-                    if (pUnicast->Address.lpSockaddr->sa_family == AF_INET)
+                    if (unicast_address->Address.lpSockaddr->sa_family == AF_INET)
                     {
-                        SOCKADDR_IN* sa_in = (SOCKADDR_IN*)pUnicast->Address.lpSockaddr;
-                        ip_address[0] = (u_char)(sa_in->sin_addr.S_un.S_un_b.s_b1);
-                        ip_address[1] = (u_char)(sa_in->sin_addr.S_un.S_un_b.s_b2);
-                        ip_address[2] = (u_char)(sa_in->sin_addr.S_un.S_un_b.s_b3);
-                        ip_address[3] = (u_char)(sa_in->sin_addr.S_un.S_un_b.s_b4);
+                        SOCKADDR_IN* unicast_address_sockaddr = (SOCKADDR_IN*)unicast_address->Address.lpSockaddr;
+                        ip_address[0] = (u_char)(unicast_address_sockaddr->sin_addr.S_un.S_un_b.s_b1);
+                        ip_address[1] = (u_char)(unicast_address_sockaddr->sin_addr.S_un.S_un_b.s_b2);
+                        ip_address[2] = (u_char)(unicast_address_sockaddr->sin_addr.S_un.S_un_b.s_b3);
+                        ip_address[3] = (u_char)(unicast_address_sockaddr->sin_addr.S_un.S_un_b.s_b4);
                     }
-                    pUnicast = pUnicast->Next;
+                    unicast_address = unicast_address->Next;
                 }
             }
         }
@@ -353,21 +374,21 @@ BOOL get_source_adaptor_full_name(char device[], char device_full_name[]) {
 }
 
 // Get the destination networking adaptor details
-BOOL get_destination_adaptor_details(char* source_ip, char* dest_ip, u_char dest_mac_address[MAC_ADAPTER_LENGTH]) {
+BOOL get_destination_adaptor_details(char* source_ip_string, char* default_gateway_ip_string, u_char dest_mac_address[MAC_ADAPTER_LENGTH]) {
     ULONG physical_address_length = MAC_ADAPTER_LENGTH;
     u_char temp_dest_mac_address[MAC_ADAPTER_LENGTH];
 
-    IPAddr source_ip_string = 0;
-    IPAddr dest_ip_string = 0;
+    IPAddr source_ip = 0;
+    IPAddr dest_ip = 0;
 
-    if (inet_pton(AF_INET, dest_ip, &dest_ip_string) != 1) {
+    if (inet_pton(AF_INET, default_gateway_ip_string, &dest_ip) != 1) {
         return FALSE;
     }
-    if (inet_pton(AF_INET, source_ip, &source_ip_string) != 1) {
+    if (inet_pton(AF_INET, source_ip_string, &source_ip) != 1) {
         return FALSE;
     }
 
-    if (SendARP((IPAddr)dest_ip_string, (IPAddr)source_ip_string, &temp_dest_mac_address, &physical_address_length)) {
+    if (SendARP((IPAddr)dest_ip, (IPAddr)source_ip, &temp_dest_mac_address, &physical_address_length)) {
         fprintf(stderr, "Unable to get destination ethernet address\n");
         return FALSE;
     }
@@ -521,7 +542,8 @@ void set_internet_protocol_fields(u_char packet[PACKET_SIZE]) {
     copy_u_short_to_array(packet, 16, IP_LENGTH);
 
     // ID
-    copy_u_short_to_array(packet, 18, IP_ID);
+    copy_u_short_to_array(packet, 18, packet_id);
+    packet_id++;
 
     // Flags and Fragment Offset
     copy_u_short_to_array(packet, 20, IP_FLAGS_FOFFSET);
@@ -649,4 +671,23 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
             }
         }
     }
+
+    SYSTEMTIME current_time;
+    GetSystemTime(&current_time);
+
+    u_int64 time_difference = calc_time_difference(start_time, current_time);
+
+    if ((time_difference / 10000000) > 30) {
+        pcap_breakloop(fp);
+    }
+}
+
+u_int64 calc_time_difference(SYSTEMTIME st1, SYSTEMTIME st2) {    
+    union timeunion ft1;
+    union timeunion ft2;
+    
+    SystemTimeToFileTime(&st1, &ft1.fileTime);
+    SystemTimeToFileTime(&st2, &ft2.fileTime);
+
+    return ft2.ul.QuadPart - ft1.ul.QuadPart;
 }
