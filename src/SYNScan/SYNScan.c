@@ -12,7 +12,7 @@
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "IPHLPAPI.lib")
 
-union timeunion {
+union time_union {
     FILETIME fileTime;
     ULARGE_INTEGER ul;
 };
@@ -65,7 +65,7 @@ union timeunion {
 #define PSEUDO_HEADER_SIZE       12
 
 // Function prototypes
-BOOL LoadNpcapDlls();
+BOOL load_npcap_dlls();
 void usage();
 int parse_argv(int argc, char* argv[], char* device, char ipAddress[], u_short ports[], int* portCount);
 BOOL get_source_adaptor_details(char device[], u_char mac_address[], u_char ip_address[], u_char default_gateway[]);
@@ -80,7 +80,7 @@ void set_internet_protocol_fields(u_char packet[PACKET_SIZE]);
 void set_tcp_fields(u_char packet[PACKET_SIZE], u_short dest_port);
 void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data);
 BOOL get_destination_adaptor_details(char* srcIP, char* destIP, u_char dest_mac_address[MAC_ADAPTER_LENGTH]);
-u_int64 calc_time_difference(SYSTEMTIME st1, SYSTEMTIME st2);
+u_int64 calc_time_difference(SYSTEMTIME system_time_1, SYSTEMTIME system_time_2);
 
 #define MALLOC(x) HeapAlloc(GetProcessHeap(), 0, (x))
 #define FREE(x) HeapFree(GetProcessHeap(), 0, (x))
@@ -99,7 +99,7 @@ int main(int argc, char** argv) {
     u_char packet[PACKET_SIZE];
 
     /* Load Npcap and its functions. */
-    if (!LoadNpcapDlls())
+    if (!load_npcap_dlls())
     {
         fprintf(stderr, "Couldn't load Npcap\n");
         return CANNOT_LOAD_NPCAP_ERROR_CODE;
@@ -187,7 +187,7 @@ int main(int argc, char** argv) {
 }
 
 // Load npcap DLLs
-BOOL LoadNpcapDlls()
+BOOL load_npcap_dlls()
 {
     _TCHAR npcap_dir[512];
     UINT len;
@@ -685,8 +685,8 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
 }
 
 u_int64 calc_time_difference(SYSTEMTIME st1, SYSTEMTIME st2) {    
-    union timeunion ft1;
-    union timeunion ft2;
+    union time_union ft1;
+    union time_union ft2;
     
     SystemTimeToFileTime(&st1, &ft1.fileTime);
     SystemTimeToFileTime(&st2, &ft2.fileTime);
