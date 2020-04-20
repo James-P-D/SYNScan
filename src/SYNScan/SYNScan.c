@@ -91,7 +91,7 @@ u_char source_ip_address[IP_ADDRESS_LENGTH];
 u_char dest_ip_address[IP_ADDRESS_LENGTH];
 int total_ports = 0;
 SYSTEMTIME start_time;
-
+BOOL packets_received[MAX_PORTS];
 u_short packet_id = 1234;
 
 int main(int argc, char** argv) {
@@ -121,7 +121,13 @@ int main(int argc, char** argv) {
     }
     // Make duplicate of port_count so we can decrement it later when we start receiving
     // response packets
-    total_ports = port_count;    
+    total_ports = port_count;
+    for (int i = 0; i < MAX_PORTS; i++) {
+        packets_received[i] = TRUE;
+    }
+    for (int i = 0; i < total_ports; i++) {
+        packets_received[ports[i]] = FALSE;
+    }
     // Get the destination IP address in bytes (u_chars)
     struct sockaddr_in sa;
     inet_pton(AF_INET, dest_ip_address_string, &(sa.sin_addr));
@@ -656,14 +662,17 @@ void packet_handler(u_char* param, const struct pcap_pkthdr* header, const u_cha
                 u_short port = ((u_short)pkt_data[34] << 8) + pkt_data[35];
                 u_short flags = ((u_short)pkt_data[46] << 8) + pkt_data[47];
 
-                if (((flags & TCP_FLAGS_ACK) == TCP_FLAGS_ACK) && ((flags & TCP_FLAGS_SYN) == TCP_FLAGS_SYN)) {
-                    fprintf(stdout, "%d - Open\n", port);
-                }
-                else if (((flags & TCP_FLAGS_ACK) == TCP_FLAGS_ACK) && ((flags & TCP_FLAGS_RST) == TCP_FLAGS_RST)) {
-                    //fprintf(stdout, "%d - Closed\n", port);
-                }
-                else {
-                    fprintf(stdout, "%d - Unknown\n", port);
+                if (!packets_received[port]) {
+                    if (((flags & TCP_FLAGS_ACK) == TCP_FLAGS_ACK) && ((flags & TCP_FLAGS_SYN) == TCP_FLAGS_SYN)) {
+                        fprintf(stdout, "%d - Open\n", port);
+                    }
+                    else if (((flags & TCP_FLAGS_ACK) == TCP_FLAGS_ACK) && ((flags & TCP_FLAGS_RST) == TCP_FLAGS_RST)) {
+                        //fprintf(stdout, "%d - Closed\n", port);
+                    }
+                    else {
+                        fprintf(stdout, "%d - Unknown\n", port);
+                    }
+                    packets_received[port] = TRUE;
                 }
 
                 total_ports--;
